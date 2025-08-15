@@ -21,16 +21,18 @@ export class MutexLock {
     } while(true)
   }
 
+  // instance properties
+
   private lock = Promise.withResolvers<void>()
   private done = false
 
-  release() {
+  release(): void {
     if (this.done) return
     this.done = true
     this.lock.resolve()
   }
 
-  protected unlocked() {
+  protected unlocked(): Promise<void> {
     return this.lock.promise
   }
 
@@ -38,3 +40,8 @@ export class MutexLock {
     this.release()
   }
 }
+
+
+
+
+

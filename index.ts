@@ -13,17 +13,12 @@ class ResponseStream {
   private mutex = MutexLock.shared()
   private id = 0
 
-  constructor() {
-    setTimeout(() => {
-      console.log('[ResponseStream] constructor closed')
-    }, 100)
-  }
-
-
   async sleep(time: number) {
-    const id = ++this.id
     using _ = await this.mutex.acquireLock()
+
+    const id = ++this.id
     console.log(`Stream #${id} started`)
+
     await sleep(time)
     console.log(`Stream #${id} finished`)
   }
@@ -36,3 +31,19 @@ stream.sleep(1_000)
 stream.sleep(1_000)
 stream.sleep(1_000)
 stream.sleep(1_000)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
