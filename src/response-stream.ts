@@ -1,5 +1,5 @@
-import type { HeadersInit } from "bun"
-import { chunks } from "./chunk"
+import { randomUUIDv7, type HeadersInit } from 'bun'
+import { MutexLock } from './mutex'
 
 /**
  *  # Response Stream
@@ -9,18 +9,20 @@ import { chunks } from "./chunk"
  *
  */
 export class ResponseStream extends Response {
+  public readonly streamId: string
   private stream: TransformStream<Uint8Array, Uint8Array>
   private encoder = new TextEncoder()
   private eventId = 0
 
-  private isReady: Promise<void>
+  private readonly ready: Promise<void>
+  private readonly mutex = MutexLock.shared()
 
   constructor(headers: HeadersInit = {}) {
-    const ready = Promise.withResolvers<void>()
+    const ready = new MutexLock()
 
     const stream = new TransformStream<Uint8Array, Uint8Array>({
       start: () => {
-        ready.resolve()
+        ready.releaseLock()
       },
       transform: (chunk, controller) => {
         const eventPrefix = this.encoder.encode(`id: ${this.eventId++}\ndata: `)
@@ -33,58 +35,56 @@ export class ResponseStream extends Response {
         eventBytes.set(eventSuffix, eventPrefix.length + chunk.length)
         controller.enqueue(eventBytes)
       },
+      flush: () => {
+        console.log('[stream] flushed called!')
+      }
     })
 
     // return readable stream as text/event-stream
+    const streamId = randomUUIDv7("hex")
+
     super(stream.readable, {
       headers: new Headers({
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
+        'X-Stream-ID': streamId,
         Connection: 'keep-alive',
         ...headers,
       }),
     })
 
     // store reference to write later
-    this.isReady = ready.promise
+    this.streamId = streamId
     this.stream = stream
+    this.ready = ready.unlocked()
   }
 
-
-  public async aquireLock() {
-    return this.globalMutex.acquireLock()
-  }
-
-  public async send<T extends {}>(obj: T) {
-    const json = Response.json(obj).body!
-    using writer = await this.aquireWriterMutex()
-    using reader = chunks(json)
-    for await (const chunk of reader) {
-      await writer.write(chunk)
-    }
+  public async sink(readable: ReadableStream) {
+    using mutex = await this.mutex.acquireLock()
+    
+    await readable.pipeTo(this.stream.writable, {
+      preventAbort: true,
+      preventCancel: true,
+      preventClose: true
+    })
   }
 
   public async pipe(...responses: Response[]) {
-    using writer = await this.aquireWriterMutex()
+    await this.ready
+    const mutex = await this.mutex.acquireLock()
     try {
-      for await (const response of responses) {
-        if (!response.body) continue
-
-        // acquire read and write locks
-        const reader = response.body.getReader()
-
-        try {
-          while (true) {
-            const event = await reader.read()
-            if (event.done) break
-            await writer.write(event.value)
-          }
-        } finally {
-          reader.releaseLock()
-        }
+      for await (const resp of responses) {
+        if (!resp.body || resp.body.locked) continue
+        await resp.body.pipeTo(this.stream.writable, {
+          preventAbort: false,
+          preventCancel: true,
+          preventClose: true,
+        })
       }
     } catch (e) {
-      console.warn('Stream error:', e)
+      console.warn('[pipe] error:', e)
+    } finally {
+      mutex.releaseLock()
     }
   }
 }

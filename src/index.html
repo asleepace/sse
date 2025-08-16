@@ -1,0 +1,170 @@
+<!doctype html>
+<html>
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+</head>
+
+<body
+  class="min-h-screen overflow-x-hidden overscroll-x-none w-full bg-black text-green-500 font-mono flex flex-1 flex-col">
+  <div id="messages" class="flex-1 flex flex-col gap-1 p-8"></div>
+
+  <script>
+
+    const insertMessage = (data) => {
+      const output = document.getElementById('messages');
+      const elem = document.createElement('div');
+      elem.textContent = typeof data === 'string' ? data : JSON.stringify(data);
+      output?.appendChild(elem);
+    };
+
+    // create a new event source
+
+    function useEventSource(onEventCallback) {
+      const stream = Promise.withResolvers();
+      const source = new EventSource('/sse');
+      const state = {
+        isConnected: false,
+        streamId: undefined,
+        messages: [],
+        taskIds: [],
+        updatedAt: new Date(),
+        createdAt: new Date(),
+      };
+      const getStreamId = () => {
+        try {
+          if (state.streamId) return state.streamId;
+          const data = JSON.parse(state.messages[0]);
+          state.streamId = data.streamId;
+          return data.streamId;
+        }
+        catch (e) {
+          console.log("[client] failed to get streamId:", state.messages);
+          return undefined;
+        }
+      };
+      source.onopen = (ev) => {
+        state.updatedAt = new Date();
+        state.isConnected = true;
+        stream.resolve();
+        onEventCallback?.({ type: 'open', data: ev.data });
+      };
+      source.onerror = (ev) => {
+        state.updatedAt = new Date();
+        state.isConnected = false;
+        onEventCallback?.({ type: 'error', data: ev.data });
+      };
+      source.onmessage = (ev) => {
+        state.messages.push(ev.data);
+        state.updatedAt = new Date();
+        getStreamId();
+        onEventCallback?.({ type: 'message', data: ev.data });
+      };
+      source.addEventListener('keep-alive', (ev) => {
+        state.updatedAt = new Date();
+        onEventCallback?.({ type: 'ping', data: ev.data });
+      });
+      return {
+        isReady() {
+          return stream.promise;
+        },
+        get state() {
+          return state;
+        },
+        async fetchStream(data) {
+          if (!state.streamId) {
+            throw new Error('Missing stream ID!');
+          }
+          const response = await fetch(`/pipe?streamId=${state.streamId}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Stream-ID': state.streamId,
+            },
+            body: JSON.stringify(data)
+          });
+          console.log("[fetchTask] resp:", response.status, response.statusText);
+          const taskId = response.headers.get('X-Task-ID');
+          if (taskId) {
+            state.taskIds.push(taskId);
+          }
+        }
+      };
+    }
+
+
+    function isMaybeJSON(obj) {
+      if (!obj || typeof obj !== "string") return false
+      if (obj.length === 0) return false
+      const firstChar = obj.charAt(0)
+      if (firstChar === '[' || firstChar === '{') {
+        return true
+      } else {
+        console.log('[isMaybeJSON] char:', firstChar, obj)
+        return false
+      }
+    }
+
+    function safeDecodeJSON(obj) {
+      try {
+        if (!isMaybeJSON(obj)) throw new Error('No valid JSON!')
+        return JSON.parse(obj.trim())
+      } catch (e) {
+        return String(obj)
+      }
+    }
+
+
+    function parseClientMessage(message) {
+      try {
+
+        if (typeof message !== 'string') {
+          throw new Error('Unknown type:' + message)
+        }
+
+        const hasNewlines = message.includes('\n')
+
+        if (hasNewlines) {
+          const components = message.split('\n')
+          const strs = components.map(safeDecodeJSON)
+          return strs.join(", ")
+        } else {
+          return safeDecodeJSON(message.trim())
+        }
+      } catch (e) {
+        return String(message)
+      }
+    }
+
+
+    // implementation 
+
+    const streamSource = useEventSource((ev) => {
+      switch (ev.type) {
+        case 'open':
+          insertMessage("client connected 🟢")
+          break
+        case 'error':
+          insertMessage("client error 🔴")
+          break
+        case 'ping':
+          insertMessage("client ping 💓")
+          break
+        case 'message':
+          const msg = parseClientMessage(ev.data)
+          console.log("[client:message] data:", msg)
+          insertMessage(ev.data)
+          break
+        default:
+          insertMessage("client unknown 🤔")
+          break
+      }
+    })
+
+    window.stream = streamSource
+  </script>
+</body>
+
+</html>

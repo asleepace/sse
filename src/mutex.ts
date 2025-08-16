@@ -1,24 +1,35 @@
 
 
-
+/**
+ *  # Mutex Lock
+ * 
+ *  Create a lock which can be awaited and unlocked in the future.
+ *  Automatically releases when called with using.
+ */
 export class MutexLock {
 
+  /**
+   *  Returns a shared lock object which can be aquired with `aquireLock()`
+   *  and can be called multiple times in a row.
+   */
   static shared() {
-    const shared = this.locksmith()
-    return {
-      async acquireLock() {
-        const lock = await shared.next()
-        return lock.value
+    return (() => {
+      const shared = this.locksmith()
+      return {
+        acquireLock: async (): Promise<MutexLock> => {
+          const lock = await shared.next()
+          return lock.value
+        },
       }
-    }
+    })()
   }
 
-  private static async* locksmith(): AsyncGenerator<MutexLock> {
+  private static async *locksmith(): AsyncGenerator<MutexLock> {
     do {
       const lock = new MutexLock()
       yield lock
       await lock.unlocked()
-    } while(true)
+    } while (true)
   }
 
   // instance properties
@@ -26,22 +37,17 @@ export class MutexLock {
   private lock = Promise.withResolvers<void>()
   private done = false
 
-  release(): void {
+  releaseLock(): void {
     if (this.done) return
     this.done = true
     this.lock.resolve()
   }
 
-  protected unlocked(): Promise<void> {
+  unlocked(): Promise<void> {
     return this.lock.promise
   }
 
   [Symbol.dispose]() {
-    this.release()
+    this.releaseLock()
   }
 }
-
-
-
-
-
