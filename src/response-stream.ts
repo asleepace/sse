@@ -63,7 +63,6 @@ export class ResponseStream extends Response {
         ready.releaseLock()
       },
       transform: (chunk, controller) => {
-
         // NOTE: debug only
         const output = new TextDecoder().decode(chunk)
         console.log('[stream] transform:', output)
@@ -91,6 +90,10 @@ export class ResponseStream extends Response {
     this.streamId = streamId
     this.stream = stream
     this.ready = ready.unlocked()
+  }
+
+  public hasClientLock() {
+    return this.eventId > 1
   }
 
   public async writeSync(uint8: Uint8Array) {

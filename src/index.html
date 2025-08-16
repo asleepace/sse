@@ -12,7 +12,6 @@
   <div id="messages" class="flex-1 flex flex-col gap-1 p-8"></div>
 
   <script>
-
     async function createEventStream() {
       const path = new URL('/sse', window.location.origin)
       const resp = await fetch(path, { method: 'OPTIONS' })
@@ -161,7 +160,8 @@
           break
       }
     })
+
+    
   </script>
 </body>
-
 </html>
