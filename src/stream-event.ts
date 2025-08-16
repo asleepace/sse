@@ -1,41 +1,17 @@
 export interface ChunkEncodableJSON {
-  type: 'text' | 'json' | 'uint8' | 'any'
+  type: 'text' | 'json' | 'uint8' | 'stream'
   data: string
 }
 
 export type ChunkType = ChunkEncodableJSON['type']
 
 export interface ChunkEncodable {
-  encode(): ChunkEncodableJSON
+  encode(): Uint8Array
 }
 
 interface ChunkEncodableEvent {
   event?: string
   chunk: ChunkEncodable
-}
-
-/**
- * The global sream encoder which handles marking events with ids
- * and event types, and formatting the string. Returns the output
- * as a Uint8Array.
- */
-export class ChunkEncoder {
-  private lastEventId: number = 0
-  private textEncoder: TextEncoder = new TextEncoder()
-
-  encode({ event, chunk }: ChunkEncodableEvent): Uint8Array {
-    const items = [
-      ['id', String(++this.lastEventId)],
-      event ? ['event', event] : undefined,
-      ['data', chunk.encode()],
-    ]
-      .filter((pair): pair is Array<any> => pair !== undefined)
-      .map((pair) => pair.join(': '))
-      .join('\n')
-
-    // append terminator and encode to binary
-    return this.textEncoder.encode(items + '\n')
-  }
 }
 
 /**
@@ -55,6 +31,32 @@ export function isMaybeJSONString(str: unknown): str is string {
  */
 export class Chunk implements ChunkEncodable {
   static readonly textDecoder = new TextDecoder()
+  static readonly textEncoder = new TextEncoder()
+  static lastChunkId = 0
+
+  static withStream(stream: ReadableStream) {
+    const transformer = new TransformStream({
+      transform(chunk, controller) {
+        const id = ++Chunk.lastChunkId
+        const head = Chunk.textEncoder.encode(`id: ${id}\n`)
+        const tail = Chunk.textEncoder.encode(`\n\n`)
+        const headLength = head.length
+        const tailLength = tail.length
+        const dataLength = chunk.length
+        const totalLength = headLength + tailLength + dataLength
+
+        console.log({ tail, totalLength, requesst: controller.desiredSize }) 
+
+        const eventBytes = new Uint8Array(totalLength)
+        eventBytes.set(head, 0)
+        eventBytes.set(chunk, head.length)
+        eventBytes.set(tail, head.length + chunk.length)
+        controller.enqueue(eventBytes)
+      }
+    })
+    stream.pipeTo(transformer.writable)
+    return transformer.readable
+  }
 
   /**
    * Attempt to encode the source to a chunk or throw an error.
@@ -90,12 +92,32 @@ export class Chunk implements ChunkEncodable {
     return new Chunk('text', text)
   }
 
+  static stream() {
+    return new Chunk('stream', null as any)
+  }
+
   constructor(public readonly type: ChunkType, public readonly data: string) {}
 
-  public encode(): ChunkEncodableJSON {
-    return {
-      type: this.type,
-      data: this.data,
+  get idString(): string {
+    const id = ++Chunk.lastChunkId
+    return `id: ${id}`
+  }
+
+  get eventString() {
+    return ""
+    // return `event: '${this.type}'`
+  }
+
+  get dataString() {
+    return `data: ${this.data}`
+  }
+
+  public encode(): Uint8Array {
+    if (this.type === 'stream' || !this.data) {
+      return Chunk.textEncoder.encode(`${this.idString}\n`)
     }
+    const formatted = `${this.idString}\n${this.eventString}\n${this.dataString}\n\n`
+    console.log(formatted)
+    return Chunk.textEncoder.encode(formatted)
   }
 }
