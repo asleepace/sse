@@ -129,7 +129,17 @@ routes.defineHandler('POST /sse', async (ctx) => {
 //
 // Server the client-side HTML page.
 //
-routes.defineHandler('GET *', async () => {
+routes.defineHandler('GET *', async (ctx) => {
+
+  if ([ctx.accept].join("").includes('text/event-stream')) {
+    return new Response(null, {
+      status: 200,
+      headers: {
+        'Content-Type': 'text/event-stream'
+      }
+    })
+  }
+
   return await serveStaticFile('./src/index.html')
 })
 

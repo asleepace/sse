@@ -159,6 +159,8 @@
           insertMessage("client unknown 🤔")
           break
       }
+    }).then((res) => {
+      window.fetchStream = res.fetchStream
     })
 
     

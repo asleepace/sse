@@ -44,6 +44,8 @@ export function formatChunk(id: number, data: Uint8Array): Uint8Array {
  *
  */
 export class ResponseStream extends Response {
+  static readonly KEEP_ALIVE = 30_000
+
   private stream: TransformStream<Uint8Array, Uint8Array>
   private eventId = 0
 
@@ -61,6 +63,8 @@ export class ResponseStream extends Response {
     const stream = new TransformStream<Uint8Array, Uint8Array>({
       start: () => {
         ready.releaseLock()
+        // NOTE: prevent stream from sleeping
+        setInterval(() => this.keepAlive(), ResponseStream.KEEP_ALIVE)
       },
       transform: (chunk, controller) => {
         // NOTE: debug only
