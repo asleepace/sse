@@ -3,6 +3,9 @@
   "workspaces": {
     "": {
       "name": "sse",
+      "dependencies": {
+        "@asleepace/mutex": "^1.0.1",
+      },
       "devDependencies": {
         "@types/bun": "latest",
       },
@@ -12,6 +15,8 @@
     },
   },
   "packages": {
+    "@asleepace/mutex": ["@asleepace/mutex@1.0.1", "", { "peerDependencies": { "typescript": ">=5.0.0" }, "optionalPeers": ["typescript"] }, "sha512-EvndUiowSs0IlnXMHPckZ3AT/0sdh7PeN1tKjHMvdW/clfh0zWk+/IE461dr8QQtPTjvsks8jJnzTgVvQDXRBg=="],
+
     "@types/bun": ["@types/bun@1.2.20", "", { "dependencies": { "bun-types": "1.2.20" } }, "sha512-dX3RGzQ8+KgmMw7CsW4xT5ITBSCrSbfHc36SNT31EOUg/LA9JWq0VDdEXDRSe1InVWpd2yLUM1FUF/kEOyTzYA=="],
 
     "@types/node": ["@types/node@24.3.0", "", { "dependencies": { "undici-types": "~7.10.0" } }, "sha512-aPTXCrfwnDLj4VvXrm+UUCQjNEvJgNA8s5F1cvwQU+3KNltTOkBm1j30uNLyqqPNe7gE3KFzImYoZEfLhp4Yow=="],

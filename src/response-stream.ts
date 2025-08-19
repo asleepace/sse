@@ -1,6 +1,6 @@
 import { randomUUIDv7, type HeadersInit } from 'bun'
-import { MutexLock } from './mutex'
 import { Chunk } from './stream-event'
+import { Mutex } from '@asleepace/mutex'
 
 const uniqueId = () => {
   const streamId = randomUUIDv7("base64url").split('-').at(0)
@@ -50,7 +50,7 @@ export class ResponseStream extends Response {
   private eventId = 0
 
   private readonly ready: Promise<void>
-  private readonly mutex = MutexLock.shared()
+  private readonly mutex = Mutex.shared()
 
   public readonly streamId: string
   public get nextEventId() {
@@ -58,19 +58,17 @@ export class ResponseStream extends Response {
   }
 
   constructor(headers: HeadersInit = {}) {
-    const ready = new MutexLock()
-
+    const started = Promise.withResolvers<void>()
     const stream = new TransformStream<Uint8Array, Uint8Array>({
       start: () => {
-        ready.releaseLock()
+        started.resolve()
         // NOTE: prevent stream from sleeping
         setInterval(() => this.keepAlive(), ResponseStream.KEEP_ALIVE)
       },
       transform: (chunk, controller) => {
         // NOTE: debug only
-        const output = new TextDecoder().decode(chunk)
-        console.log('[stream] transform:', output)
-
+        // const output = new TextDecoder().decode(chunk)
+        // console.log('[stream] transform:', output)
         const message = formatChunk(this.nextEventId, chunk)
         controller.enqueue(message)
       },
@@ -93,7 +91,7 @@ export class ResponseStream extends Response {
     // store reference to write later
     this.streamId = streamId
     this.stream = stream
-    this.ready = ready.unlocked()
+    this.ready = started.promise
   }
 
   public hasClientLock() {
